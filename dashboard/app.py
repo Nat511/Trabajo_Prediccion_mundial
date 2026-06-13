@@ -6,6 +6,11 @@ import tensorflow as tf
 import shap
 import streamlit as st
 import plotly.graph_objects as go
+import sys
+
+# Ensure dashboard path is in sys.path for importing api_helper
+sys.path.append(os.path.abspath(os.path.dirname(__file__)))
+import api_helper
 
 # --- PAGE SETUP ---
 st.set_page_config(page_title="Plataforma Predictiva Mundial 2026", page_icon="⚽", layout="wide")
@@ -62,7 +67,7 @@ st.warning(
     "y no deben interpretarse como recomendación de apuesta, inversión o decisión económica de ningún tipo."
 )
 
-st.markdown("<div class='title-text'>🔮 Plataforma Predictiva de Fútbol — Mundial 2026</div>", unsafe_allow_html=True)
+st.markdown("<div class='title-text'>Plataforma Predictiva de Fútbol — Mundial 2026</div>", unsafe_allow_html=True)
 
 # Get unique list of teams
 equipos = sorted(list(set(df['home_team'].unique()) | set(df['away_team'].unique())))
@@ -71,12 +76,12 @@ equipos = sorted(list(set(df['home_team'].unique()) | set(df['away_team'].unique
 col1, col2, col3 = st.columns([2, 1, 2])
 with col1:
     st.markdown("### 🏠 Selección Local")
-    equipo_local = st.selectbox("Selecciona equipo local", equipos, index=equipos.index("Brazil") if "Brazil" in equipos else 0)
+    equipo_local = st.selectbox("Selecciona equipo local", equipos, index=None, placeholder="Seleccione equipo local...")
 with col2:
     st.markdown("<h3 style='text-align:center; margin-top:40px;'>VS</h3>", unsafe_allow_html=True)
 with col3:
     st.markdown("### ✈️ Selección Visitante")
-    equipo_visitante = st.selectbox("Selecciona equipo visitante", equipos, index=equipos.index("Argentina") if "Argentina" in equipos else 1)
+    equipo_visitante = st.selectbox("Selecciona equipo visitante", equipos, index=None, placeholder="Seleccione equipo visitante...")
 
 # Options layout
 st.sidebar.markdown("## ⚙️ Configuración del Partido")
@@ -84,12 +89,27 @@ is_neutral = st.sidebar.checkbox("¿Se juega en campo neutral?", value=False)
 tournament_type = st.sidebar.selectbox("Tipo de Torneo", ["FIFA World Cup", "Friendly", "Otros Torneos"])
 phase_type = st.sidebar.selectbox("Fase del Partido", ["Fase de Grupos", "Eliminatoria Directa (Knockout)"])
 
+# Conectividad en Tiempo Real
+st.sidebar.markdown("---")
+st.sidebar.markdown("### 🔌 Conectividad en Tiempo Real")
+online_mode = st.sidebar.toggle("Modo Online (APIs en vivo)", value=False, help="Activa la búsqueda en tiempo real de noticias en Google News y lesiones en API-Football.")
+
+api_key = ""
+api_url = "https://v3.football.api-sports.io"
+if online_mode:
+    # Read default from env variable if exists
+    default_key = os.environ.get("API_FOOTBALL_KEY", "")
+    api_key = st.sidebar.text_input("API-Football Key", value=default_key, type="password", help="Tu API Key de www.api-football.com")
+    api_url = st.sidebar.text_input("API-Football Base URL", value=api_url, help="URL base de la API-Football")
+
 # Map UI settings to features
 is_neutral_val = 1 if is_neutral else 0
 tourn_weight_val = 3 if tournament_type == "FIFA World Cup" else (1 if tournament_type == "Friendly" else 5)
 phase_encoded_val = 1 if phase_type == "Eliminatoria Directa (Knockout)" else 0
 
-if equipo_local == equipo_visitante:
+if equipo_local is None or equipo_visitante is None:
+    st.info("💡 **Predicción del Partido:** Por favor, selecciona el equipo local y el equipo visitante en los selectores de arriba para ver la predicción y el análisis explicable del partido.")
+elif equipo_local == equipo_visitante:
     st.error("Error: Las selecciones local y visitante no pueden ser la misma.")
 else:
     # --- FEATURE ENGINEERING ON THE FLY ---
@@ -195,13 +215,28 @@ else:
     h2h_g_home_avg = h2h_g_home / n_h2h if n_h2h > 0 else 0.0
     h2h_g_away_avg = h2h_g_away / n_h2h if n_h2h > 0 else 0.0
 
-    # NLP rolling values (last known)
-    sentiment_home = df_sorted[df_sorted['home_team'] == equipo_local]['sentiment_score_home'].iloc[-1] if len(df_sorted[df_sorted['home_team'] == equipo_local]) > 0 else 0.0
-    sentiment_away = df_sorted[df_sorted['home_team'] == equipo_visitante]['sentiment_score_away'].iloc[-1] if len(df_sorted[df_sorted['home_team'] == equipo_visitante]) > 0 else 0.0
-    injury_home = int(df_sorted[df_sorted['home_team'] == equipo_local]['injury_flag_home'].iloc[-1] if len(df_sorted[df_sorted['home_team'] == equipo_local]) > 0 else 0)
-    injury_away = int(df_sorted[df_sorted['home_team'] == equipo_visitante]['injury_flag_away'].iloc[-1] if len(df_sorted[df_sorted['home_team'] == equipo_visitante]) > 0 else 0)
-    vol_home = int(df_sorted[df_sorted['home_team'] == equipo_local]['news_volume_home'].iloc[-1] if len(df_sorted[df_sorted['home_team'] == equipo_local]) > 0 else 0)
-    vol_away = int(df_sorted[df_sorted['home_team'] == equipo_visitante]['news_volume_away'].iloc[-1] if len(df_sorted[df_sorted['home_team'] == equipo_visitante]) > 0 else 0)
+    # NLP rolling values (last known or live from API)
+    home_nlp_data = None
+    away_nlp_data = None
+    
+    if online_mode:
+        with st.spinner("Obteniendo noticias y lesiones en tiempo real de APIs..."):
+            home_nlp_data = api_helper.get_live_nlp_features(equipo_local, api_key=api_key, api_url=api_url)
+            sentiment_home = home_nlp_data['sentiment_score']
+            injury_home = home_nlp_data['injury_flag']
+            vol_home = home_nlp_data['news_volume']
+            
+            away_nlp_data = api_helper.get_live_nlp_features(equipo_visitante, api_key=api_key, api_url=api_url)
+            sentiment_away = away_nlp_data['sentiment_score']
+            injury_away = away_nlp_data['injury_flag']
+            vol_away = away_nlp_data['news_volume']
+    else:
+        sentiment_home = df_sorted[df_sorted['home_team'] == equipo_local]['sentiment_score_home'].iloc[-1] if len(df_sorted[df_sorted['home_team'] == equipo_local]) > 0 else 0.0
+        sentiment_away = df_sorted[df_sorted['home_team'] == equipo_visitante]['sentiment_score_away'].iloc[-1] if len(df_sorted[df_sorted['home_team'] == equipo_visitante]) > 0 else 0.0
+        injury_home = int(df_sorted[df_sorted['home_team'] == equipo_local]['injury_flag_home'].iloc[-1] if len(df_sorted[df_sorted['home_team'] == equipo_local]) > 0 else 0)
+        injury_away = int(df_sorted[df_sorted['home_team'] == equipo_visitante]['injury_flag_away'].iloc[-1] if len(df_sorted[df_sorted['home_team'] == equipo_visitante]) > 0 else 0)
+        vol_home = int(df_sorted[df_sorted['home_team'] == equipo_local]['news_volume_home'].iloc[-1] if len(df_sorted[df_sorted['home_team'] == equipo_local]) > 0 else 0)
+        vol_away = int(df_sorted[df_sorted['home_team'] == equipo_visitante]['news_volume_away'].iloc[-1] if len(df_sorted[df_sorted['home_team'] == equipo_visitante]) > 0 else 0)
 
     # --- LSTM Recurrent Sequence Embedding ---
     # Construct sequence of last 10 matches for each team
@@ -372,4 +407,57 @@ else:
         st.markdown(f"**Prensa {equipo_local}:** Sentimiento `{sentiment_label_h}` (`{sentiment_home:.2f}`) | `{injury_label_h}` (Noticias: `{vol_home}`)")
         st.markdown(f"**Prensa {equipo_visitante}:** Sentimiento `{sentiment_label_a}` (`{sentiment_away:.2f}`) | `{injury_label_a}` (Noticias: `{vol_away}`)")
         
+        # Premium live details if Online Mode is active
+        if online_mode and home_nlp_data and away_nlp_data:
+            st.markdown("---")
+            st.markdown("##### 🔴 Detalle en Tiempo Real (APIs)")
+            
+            # Local Team News Expander
+            with st.expander(f"📰 Noticias Recientes de {equipo_local}"):
+                if home_nlp_data.get('headlines_with_links'):
+                    for item in home_nlp_data['headlines_with_links']:
+                        title = item['title']
+                        link = item['link']
+                        st.markdown(f"- [{title}]({link})")
+                elif home_nlp_data.get('headlines'):
+                    for hl in home_nlp_data['headlines']:
+                        st.write(f"- {hl}")
+                else:
+                    st.info("No se encontraron noticias recientes en Google News.")
+                    
+            # Visitante Team News Expander
+            with st.expander(f"📰 Noticias Recientes de {equipo_visitante}"):
+                if away_nlp_data.get('headlines_with_links'):
+                    for item in away_nlp_data['headlines_with_links']:
+                        title = item['title']
+                        link = item['link']
+                        st.markdown(f"- [{title}]({link})")
+                elif away_nlp_data.get('headlines'):
+                    for hl in away_nlp_data['headlines']:
+                        st.write(f"- {hl}")
+                else:
+                    st.info("No se encontraron noticias recientes en Google News.")
+            
+            # API-Football Injuries
+            if api_key:
+                col_inj_h, col_inj_a = st.columns(2)
+                with col_inj_h:
+                    st.write(f"🏥 **Lesiones Oficiales {equipo_local}:**")
+                    if home_nlp_data.get('api_injuries'):
+                        for inj in home_nlp_data['api_injuries']:
+                            player_name = inj.get('player', {}).get('name', 'Jugador')
+                            inj_type = inj.get('player', {}).get('type', 'Lesión / Baja')
+                            st.write(f"- 🔴 **{player_name}**: {inj_type}")
+                    else:
+                        st.write("✅ Sin lesionados reportados con la API.")
+                with col_inj_a:
+                    st.write(f"🏥 **Lesiones Oficiales {equipo_visitante}:**")
+                    if away_nlp_data.get('api_injuries'):
+                        for inj in away_nlp_data['api_injuries']:
+                            player_name = inj.get('player', {}).get('name', 'Jugador')
+                            inj_type = inj.get('player', {}).get('type', 'Lesión / Baja')
+                            st.write(f"- 🔴 **{player_name}**: {inj_type}")
+                    else:
+                        st.write("✅ Sin lesionados reportados con la API.")
+                        
         st.markdown("</div>", unsafe_allow_html=True)

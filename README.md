@@ -6,7 +6,7 @@ Este proyecto consiste en el desarrollo de una plataforma predictiva de resultad
 
 ---
 
-## Estructura del Repositorio
+## Estructura del Repositorio (sin actualiza hasta la fecha)
 
 ```
 Trabajo_Prediccion_mundial/
@@ -42,11 +42,32 @@ Trabajo_Prediccion_mundial/
 
 ## Fuentes de Datos Utilizadas
 
-Los datos primarios fueron obtenidos de Kaggle e incluyen:
-- **results.csv:** Historial de partidos internacionales masculinos de fútbol desde 1872 hasta la actualidad.
-- **eloratings.csv:** Calificaciones y ratings históricos de selecciones nacionales de fútbol.
-- **shootouts.csv:** Historial de definiciones por penaltis de partidos internacionales.
-- **former_names.csv:** Mapeo histórico de los nombres anteriores y vigentes de las federaciones de fútbol.
+<<<<<<< HEAD
+
+=======
+
+>>>>>>> 2a6e3bf899fd38326d7f7e9c0849d2ac36fa9acc
+Este proyecto se construyó a partir de datos recopilados y publicados por miembros de la comunidad de Kaggle, a quienes se reconoce el trabajo de recopilación y mantenimiento de estas bases de datos.
+
+* **International Football Results from 1872 to 2017**, publicado por **Mart Jürisoo (martj42)** en Kaggle:
+  https://www.kaggle.com/datasets/martj42/international-football-results-from-1872-to-2017/data
+
+  De este conjunto de datos se utilizaron los archivos:
+
+  * `results.csv` Historial de partidos internacionales masculinos de fútbol desde 1872 hasta la actualidad.
+  * `shootouts.csv` Historial de definiciones por penaltis de partidos internacionales.
+  * `former_names.csv` Mapeo histórico de los nombres anteriores y vigentes de las federaciones de fútbol.
+
+* **International Football Elo Ratings**, publicado por **Saif Alnimri (saifalnimri)** en Kaggle:
+  https://www.kaggle.com/datasets/saifalnimri/international-football-elo-ratings
+
+  De este conjunto de datos se utilizó:
+
+  * `eloratings.csv` Calificaciones y ratings históricos de selecciones nacionales de fútbol.
+
+Agradecemos a los autores por poner estos recursos a disposición libre, permitiendo la construcción y evaluación de este modelo predictivo.
+
+Los datasets fueron posteriormente integrados, depurados y transformados mediante un proceso ETL propio para generar las variables utilizadas por los modelos de ML desarrollados en este proyecto.
 
 ---
 
@@ -54,7 +75,7 @@ Los datos primarios fueron obtenidos de Kaggle e incluyen:
 
 1. Clone este repositorio:
    ```bash
-   git clone https://github.com/Nat511/Trabajo_Prediccion_mundial.git
+   git clone https://github.com/Nat511/world-cup-prediction.git
    cd Trabajo_Prediccion_mundial
    ```
 
@@ -95,10 +116,22 @@ Los notebooks de la carpeta `notebooks/` deben ejecutarse en **orden estricto**,
 
 ## Ejecución del Dashboard (Streamlit)
 
-Para iniciar la interfaz interactiva web y realizar predicciones en tiempo real para cualquier par de selecciones con análisis de explicabilidad SHAP local:
+Para iniciar la interfaz interactiva web y realizar predicciones en tiempo real para cualquier par de selecciones con análisis de explicabilidad SHAP local, asegúrese de tener activado su entorno virtual o ejecutarlo usando la ruta directa:
 
 ```bash
+# Con entorno virtual activado:
 streamlit run dashboard/app.py
+
+# O bien directamente en Windows:
+.venv\Scripts\streamlit.exe run dashboard/app.py
 ```
 
 La aplicación estará disponible de forma predeterminada en `http://localhost:8501`.
+
+### 🔌 Conectividad en Tiempo Real (Modo Online)
+El dashboard integra un Modo Online para sustituir los datos históricos de NLP por señales obtenidas en tiempo real desde APIs vivas:
+1. **Google News RSS Feed (Gratuito, no requiere API key):** Recupera los 10 titulares de noticias deportivas más recientes en tiempo real para cada selección, procesando su sentimiento con BERT / análisis léxico y determinando la repercusión mediática.
+2. **API-Football (www.api-football.com):** Permite verificar en tiempo real las bajas y lesiones de los jugadores de ambas selecciones nacionales.
+   - Para habilitarlo, active el **"Modo Online (APIs en vivo)"** desde la barra lateral.
+   - Introduzca su API Key de `api-football.com` en el input secreto de la barra lateral, o establezca la variable de entorno `API_FOOTBALL_KEY` antes de ejecutar la aplicación para que se cargue automáticamente.
+   - Las noticias reales y las listas detalladas de lesionados devueltas por la API se mostrarán interactivamente en la sección **Señales NLP de la Prensa**.
