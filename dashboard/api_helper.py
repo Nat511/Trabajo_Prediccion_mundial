@@ -5,6 +5,8 @@ import xml.etree.ElementTree as ET
 import requests
 import spacy
 from transformers import pipeline
+import feedparser
+import team_mapper
 
 # Global caches for lazy loading
 _sentiment_analyzer = None
@@ -40,27 +42,21 @@ def get_spacy_nlp():
     return _spacy_nlp
 
 def fetch_rss_headlines(team_name, max_results=10, return_links=False):
-    """Fetch recent headlines for a team from Google News RSS feed."""
-    query = f"{team_name} football team"
+    """Fetch recent headlines for a team from Google News RSS feed using feedparser."""
+    # Use Spanish locale for RSS queries as described in arquitectura.md
+    query = f"{team_name} futbol"
     encoded_query = urllib.parse.quote(query)
-    url = f"https://news.google.com/rss/search?q={encoded_query}&hl=en-US&gl=US&ceid=US:en"
+    url = f"https://news.google.com/rss/search?q={encoded_query}&hl=es&gl=ES&ceid=ES:es"
     
     try:
-        req = urllib.request.Request(
-            url, 
-            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3'}
-        )
-        with urllib.request.urlopen(req, timeout=10) as response:
-            xml_data = response.read()
-        
-        root = ET.fromstring(xml_data)
+        feed = feedparser.parse(url)
         headlines = []
-        for item in root.findall('.//item')[:max_results]:
-            title = item.find('title').text
-            # Clean headline by stripping the source (e.g. "Headline - ESPN")
+        for entry in feed.entries[:max_results]:
+            title = entry.title
+            # Clean headline by stripping the source (e.g. "Headline - Marca")
             if " - " in title:
                 title = title.rsplit(" - ", 1)[0]
-            link = item.find('link').text if item.find('link') is not None else ""
+            link = entry.link if hasattr(entry, 'link') else ""
             if return_links:
                 headlines.append({'title': title, 'link': link})
             else:
@@ -113,39 +109,42 @@ def get_api_football_injuries(team_name, api_key, api_url="https://v3.football.a
         }
         
     try:
-        # Step 1: Search for national team to get their API ID
-        teams_url = f"{api_url.rstrip('/')}/teams"
-        params = {'search': team_name}
+        # Step 1: Lookup ID from mapping lookup first, fallback to search API
+        mapped_info = team_mapper.get_team_ids(team_name)
+        team_id = mapped_info.get("api_football_id")
         
-        response = requests.get(teams_url, headers=headers, params=params, timeout=10)
-        if response.status_code != 200:
-            print(f"API-Football search error: {response.text}")
-            return []
-            
-        data = response.json()
-        teams = data.get('response', [])
-        
-        team_id = None
-        # Prioritize matching national team
-        for t in teams:
-            team_info = t.get('team', {})
-            # Match name and verify if national team
-            if team_info.get('national') is True:
-                team_id = team_info.get('id')
-                break
-                
-        # Fallback to direct name match if national field is not set
         if not team_id:
+            teams_url = f"{api_url.rstrip('/')}/teams"
+            params = {'search': team_name}
+            
+            response = requests.get(teams_url, headers=headers, params=params, timeout=10)
+            if response.status_code != 200:
+                print(f"API-Football search error: {response.text}")
+                return []
+                
+            data = response.json()
+            teams = data.get('response', [])
+            
+            # Prioritize matching national team
             for t in teams:
                 team_info = t.get('team', {})
-                if team_info.get('name', '').lower() == team_name.lower():
+                # Match name and verify if national team
+                if team_info.get('national') is True:
                     team_id = team_info.get('id')
                     break
                     
-        # Ultimate fallback to first result
-        if not team_id and teams:
-            team_id = teams[0].get('team', {}).get('id')
-            
+            # Fallback to direct name match if national field is not set
+            if not team_id:
+                for t in teams:
+                    team_info = t.get('team', {})
+                    if team_info.get('name', '').lower() == team_name.lower():
+                        team_id = team_info.get('id')
+                        break
+                        
+            # Ultimate fallback to first result
+            if not team_id and teams:
+                team_id = teams[0].get('team', {}).get('id')
+                
         if not team_id:
             print(f"Could not map team name '{team_name}' to API-Football team ID.")
             return []

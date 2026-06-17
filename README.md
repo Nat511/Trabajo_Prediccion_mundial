@@ -1,25 +1,25 @@
 # Plataforma Predictiva de Fútbol — Mundial 2026
 
-Práctica Final de Inteligencia Artificial y Machine Learning — Universidad del Valle (Univalle) 2026.
+Práctica Final de Inteligencia Artificial y Machine Learning — Universidad Privada del Valle (Univalle) 2026.
 
 Este proyecto consiste en el desarrollo de una plataforma predictiva de resultados de partidos de fútbol internacional enfocado en el Mundial 2026. El sistema combina técnicas de Machine Learning convencional, modelado temporal de secuencias (LSTM), análisis de sentimiento deportivo (NLP) y explicabilidad en IA (SHAP), culminando en una aplicación web interactiva desarrollada con Streamlit.
 
 ---
 
-## Estructura del Repositorio (sin actualiza hasta la fecha)
+## Estructura del Repositorio
 
 ```
 Trabajo_Prediccion_mundial/
 ├── data/
-│   ├── raw/                        # Datos originales sin procesar (results.csv, etc.)
-│   ├── processed/                  # Dataset unificado y particiones train/val/test
+│   ├── raw/                        # Datos originales sin procesar (results.csv, eloratings.csv, etc.)
+│   ├── processed/                  # Dataset unificado, limpio y particiones train/val/test, y features_nlp.csv
 │   └── diccionario_datos.md        # Documentación de las columnas del dataset
 ├── notebooks/
 │   ├── 01_etl.ipynb                # Limpieza, unificación y cálculo de ELO dinámico, racha e H2H
 │   ├── 02_eda.ipynb                # Análisis exploratorio y partición temporal (Train/Val/Test)
 │   ├── 03_modelo_baseline.ipynb    # Modelos base (Regresión Logística, Dummies, Árboles, etc.)
 │   ├── 04_modelo_recurrente.ipynb  # Modelo recurrente LSTM de dos ramas en TensorFlow
-│   ├── 05_nlp.ipynb                # Corpus de noticias y análisis de sentimiento con BERT y SpaCy
+│   ├── 05_nlp.ipynb                # Análisis de sentimiento con BERT y SpaCy (simulado offline)
 │   ├── 06_modelo_avanzado.ipynb    # XGBoost integrado con embeddings de LSTM y features NLP
 │   └── 07_explicabilidad.ipynb     # Análisis de explicabilidad global y local con SHAP
 ├── saved_models/
@@ -28,25 +28,23 @@ Trabajo_Prediccion_mundial/
 │   ├── scaler.joblib               # StandardScaler para secuencias LSTM
 │   └── xgb_advanced.joblib         # Clasificador XGBoost avanzado integrado
 ├── dashboard/
-│   └── app.py                      # Código de la aplicación web Streamlit
+│   ├── app.py                      # Código de la aplicación web Streamlit (visualización e inferencia)
+│   ├── api_helper.py               # Integración con Google News (feedparser) y API-Football (lesiones)
+│   └── team_mapper.py              # Mapeo y normalización de nombres e identificadores de selecciones
 ├── docs/
 │   ├── eda_plots/                  # Gráficos de distribuciones y correlaciones del EDA
 │   ├── shap_plots/                 # Gráficos de atribuciones SHAP (globales y locales)
 │   ├── modelo_negocio.md           # Propuesta comercial, monetización y riesgos éticos
 │   └── uso_responsable.md          # Limitaciones éticas, privacidad y disclaimers
-├── requirements.txt                # Librerías necesarias para ejecutar el proyecto
-└── README.md                       # Instrucciones generales
+├── arquitectura.md                 # Especificación de la arquitectura de datos e integración de features
+├── requirements.txt                # Librerías necesarias para ejecutar el proyecto (incluye feedparser)
+└── README.md                       # Instrucciones generales y descripción del proyecto
 ```
 
 ---
 
 ## Fuentes de Datos Utilizadas
 
-<<<<<<< HEAD
-
-=======
-
->>>>>>> 2a6e3bf899fd38326d7f7e9c0849d2ac36fa9acc
 Este proyecto se construyó a partir de datos recopilados y publicados por miembros de la comunidad de Kaggle, a quienes se reconoce el trabajo de recopilación y mantenimiento de estas bases de datos.
 
 * **International Football Results from 1872 to 2017**, publicado por **Mart Jürisoo (martj42)** en Kaggle:
@@ -129,9 +127,15 @@ streamlit run dashboard/app.py
 La aplicación estará disponible de forma predeterminada en `http://localhost:8501`.
 
 ### 🔌 Conectividad en Tiempo Real (Modo Online)
-El dashboard integra un Modo Online para sustituir los datos históricos de NLP por señales obtenidas en tiempo real desde APIs vivas:
-1. **Google News RSS Feed (Gratuito, no requiere API key):** Recupera los 10 titulares de noticias deportivas más recientes en tiempo real para cada selección, procesando su sentimiento con BERT / análisis léxico y determinando la repercusión mediática.
-2. **API-Football (www.api-football.com):** Permite verificar en tiempo real las bajas y lesiones de los jugadores de ambas selecciones nacionales.
-   - Para habilitarlo, active el **"Modo Online (APIs en vivo)"** desde la barra lateral.
-   - Introduzca su API Key de `api-football.com` en el input secreto de la barra lateral, o establezca la variable de entorno `API_FOOTBALL_KEY` antes de ejecutar la aplicación para que se cargue automáticamente.
-   - Las noticias reales y las listas detalladas de lesionados devueltas por la API se mostrarán interactivamente en la sección **Señales NLP de la Prensa**.
+El dashboard integra un **Modo Online** para sustituir las simulaciones de NLP históricas con señales reales en vivo:
+1. **Google News RSS Feed (Lector robusto con `feedparser`):** 
+   - Realiza búsquedas de titulares deportivos con localización al español (`hl=es&gl=ES&ceid=ES:es`) para maximizar la relevancia en el contexto de fútbol.
+   - Procesa en tiempo real los 10 titulares más recientes utilizando el modelo multilingual BERT (`nlptown/bert-base-multilingual-uncased-sentiment`) o un analizador léxico local como fallback.
+   - Muestra las noticias en la sección interactiva del dashboard, y cada titular incluye un **enlace directo al artículo web original** para facilitar la verificación del usuario.
+2. **API-Football (www.api-football.com):**
+   - Resuelve el identificador de cada selección mediante el módulo de mapeo unificado `team_mapper.py` (con soporte para alias multilingües).
+   - Realiza consultas en vivo al endpoint de lesiones (`/injuries`) utilizando la temporada actual de forma dinámica.
+   - Si la información sobre lesiones para una selección nacional no está disponible en la API, el sistema ejecuta un mecanismo de contingencia para **detectar lesiones a partir de palabras clave en los titulares reales de Google News** (ej. *lesión, baja, molestias, duda*).
+   - **Configuración:** Para habilitar este modo, active **"Modo Online (APIs en vivo)"** desde la barra lateral de Streamlit e introduzca su API Key, o bien defina la variable de entorno `API_FOOTBALL_KEY` antes de iniciar el servidor.
+
+Al iniciar la aplicación, los selectores de selecciones se presentan vacíos por defecto, lo que mejora la experiencia de usuario y evita cargas innecesarias de modelos de explicabilidad en el arranque.
